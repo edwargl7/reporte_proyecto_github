@@ -1,13 +1,17 @@
 import requests
 import json
 #import ollama
+import re
 import xlsxwriter
 from bs4 import BeautifulSoup
 
 
 # Configuración de la API de Ollama
-MODEL_NAME = "deepseek-r1:14b"  # Reemplaza con el nombre correcto del modelo en Ollama
-PROMPT = "Resume la discusión de la issue en el siguiente enlace, destacando los problemas identificados, las soluciones propuestas y los avances logrados. Limita el resumen a 50 palabras y enfócate en los aspectos clave:"
+# MODEL_NAME = "deepseek-llm:7b"  # Reemplaza con el nombre correcto del modelo en Ollama
+# PROMPT = "Resume la discusión de la issue en el siguiente enlace, destacando los problemas identificados, las soluciones propuestas y los avances logrados. Limita el resumen a 50 palabras y enfócate en los aspectos clave:"
+
+pattern = r'\(https:\/\/github\.com\/[a-zA-Z0-9_-]+\/[a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_-]+)*\)'
+
 
 # URL del proyecto
 URL = "https://github.com/orgs/udistrital/projects/62"
@@ -47,9 +51,9 @@ def obtener_issues_por_milestone(url):
     global Avance_list
     Avance_list= columns[16]["settings"]["options"]
     #print("sprint list",Sprint_list)
-
-    for issue in issues:
-        #print(issue)
+    print(f"se encontraron {len(issues)} issues")
+    for index,issue in enumerate(issues):
+        print(f"{index+1}/{len(issues)}")
         #print(issue["memexProjectColumnValues"][4])
         if issue["memexProjectColumnValues"][4]["value"]==None:
             continue
@@ -58,7 +62,7 @@ def obtener_issues_por_milestone(url):
             "Sprint": setSpring(issue["memexProjectColumnValues"][7]["value"]["id"]),
             "Título": issue["memexProjectColumnValues"][0]["value"]["title"]["raw"],
             #"Descripción": generar_respuesta(issue["content"]["url"]),
-            "Descripción":PROMPT+url,
+            "Descripción":obtener_descripcion_issue(issue["content"]["url"]),
             "Avance":setAvance(issue["memexProjectColumnValues"][10]["value"]),
             "URL": issue["content"]["url"],
         }
@@ -117,6 +121,40 @@ def create_excel_from_dict(file_name, data):
 
     # Close the workbook to save the file
     workbook.close()
+
+def split_issue_body(issue_body: str, split_2: list, chosen_part: int = 0) -> str:
+    if not issue_body:  
+        return ""
+
+    if not split_2:
+        split_2 = ["Sub Tareas", "Subtarea"]
+    
+    for sp in split_2:
+        issue_body = issue_body.split(sp)[chosen_part]
+    
+    return issue_body
+
+def clear_issue(issue_body: str) -> str:
+    description = re.sub(pattern, '', issue_body)
+    description = description.replace("[", "").replace("]", "").replace("!image", "")
+    description = re.sub(r'\n+', '\n', description)
+    return description
+
+def obtener_descripcion_issue(url):
+    # Realizar la solicitud GET a la URL
+    response = requests.get(url)
+    if response.status_code != 200:
+        print(f"Error al acceder a la página: {response.status_code}")
+        return ""
+
+    # Parsear el contenido HTML
+    #print(response.text)
+    
+    soup = BeautifulSoup(response.text, 'html.parser')
+
+    description_text = soup.select_one('div[data-testid="markdown-body"]').text
+
+    return clear_issue(split_issue_body(description_text, []))
         
 # def generar_respuesta(url):
 #     # Configura el payload para la solicitud
